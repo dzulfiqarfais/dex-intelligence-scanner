@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import s from './remora.module.css'
+import SourcePanel from './source-panel'
 
 type Actor={address:string;label:string;role:'whale'|'smart_money';status:'new_entry'|'adding'|'distribution'|'holding';buyUsd:number;sellUsd:number;netUsd:number;holdingPct:number;lastActiveTime:number|null;spotOpenTs:number|null;explorerUrl:string|null}
 type Behavior={state:'accumulation'|'distribution'|'mixed'|'quiet'|'unavailable';newWhaleEntries:number;addingWhales:number;distributingWhales:number;activeWhaleBuyers:number;activeSmartMoneyBuyers:number;whaleNetFlowUsd:number;smartMoneyNetFlowUsd:number;multiWhaleAccumulation:boolean;actors:Actor[];note:string}
@@ -167,6 +168,8 @@ export default function Remora(){
             <div className={s.metrics}><div><span>Honeypot</span><strong>{selected.security.honeypot||'—'}</strong></div><div><span>Contract</span><strong>{selected.security.verified||'—'}</strong></div><div><span>Mint</span><strong>{selected.security.mintable||'—'}</strong></div><div><span>Freeze</span><strong>{selected.security.freezable||'—'}</strong></div><div><span>Rug pull</span><strong>{selected.security.rugPull||'—'}</strong></div><div><span>Fake token</span><strong>{selected.security.fakeToken||'—'}</strong></div></div>
             <div className={s.flags}>{selected.security.flags.map(x=><span key={x}>{x}</span>)}</div>
           </section>
+
+          <SourcePanel candidate={selected}/>
 
           {selected.behavior.actors.length>0&&<section className={s.actors}><p className={s.eyebrow}>LARGE ACTORS</p>{selected.behavior.actors.map((a,i)=><a key={a.address+i} href={a.explorerUrl||'#'} target={a.explorerUrl?'_blank':undefined} rel="noreferrer"><div><strong>{a.role==='smart_money'?'SMART':'WHALE'} · {actorLabel(a.status)}</strong><span>{a.label}</span></div><b className={flowClass(a.netUsd)}>{money(a.netUsd)}</b></a>)}</section>}
 

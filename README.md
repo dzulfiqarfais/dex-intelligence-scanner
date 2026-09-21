@@ -12,6 +12,7 @@ Standalone Next.js market-intelligence project.
 
 \`\`\`
 CMC_API_KEY=
+BIRDEYE_API_KEY=
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 CRON_SECRET=
