@@ -23,3 +23,16 @@ Without \`CMC_API_KEY\`, the scanner uses CoinMarketCap's keyless public API. A 
 ## Important
 
 Scores and whale labels are analytical heuristics/evidence summaries, not automatic trade instructions or guarantees of future price movement.
+
+
+## Caller Reputation Database v1
+
+Remora includes a browser-persistent caller observation database for verified GMGN/FOMO/Birdeye/Nansen research. It tracks:
+- entry-before-call behavior
+- post-call dumping
+- observed ROI
+- rug/scam exposure
+- thesis quality
+- sample-size confidence
+
+Reputation is deliberately shrunk toward neutral when observations are scarce. This local store keeps the DEX project separate from the existing Fais Finance Supabase project. A dedicated server database can replace the local adapter later without changing the scoring model.

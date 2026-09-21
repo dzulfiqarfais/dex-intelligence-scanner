@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import s from './remora.module.css'
+import ReputationPanel from './reputation-panel'
 
 type CandidateLike={
   tokenAddress:string|null
@@ -139,6 +140,8 @@ export default function SourcePanel({candidate}:{candidate:CandidateLike}){
         <small>{p.note}</small>
       </a>)}
     </div>
+
+    <ReputationPanel tokenSymbol={candidate.symbol} traders={intel.professionalTraders}/>
 
     {!intel.publicCallerThesis&&<p className={s.sourceWarning}><strong>Public thesis intentionally blank.</strong> FOMO/GMGN caller text is not being scraped or invented. When an official source/API is connected, the exact call/thesis can be attached here with timestamp and entry-before-call analysis.</p>}
   </section>
