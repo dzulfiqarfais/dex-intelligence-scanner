@@ -119,7 +119,7 @@ export default function Home(){
   return <main className="shell">
     <header className="topbar">
       <div className="brand"><div className="mark">DX</div><div><p className="eyebrow">MARKET INTELLIGENCE</p><h1>DEX Intelligence Scanner</h1></div></div>
-      <div className="live">LIVE API · <span className="muted">{updated?updated.toLocaleTimeString():'—'}</span></div>
+      <div style={{display:'flex',gap:8,alignItems:'center'}}><a className="live" style={{textDecoration:'none'}} href="/remora">Remora CMC →</a><div className="live">LIVE API · <span className="muted">{updated?updated.toLocaleTimeString():'—'}</span></div></div>
     </header>
 
     <section className="hero">
