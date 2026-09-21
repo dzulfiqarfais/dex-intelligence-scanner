@@ -7,11 +7,35 @@ import s from './remora.module.css'
 type Trader={address:string;label:string;realizedPnl:number;unrealizedPnl:number;totalPnl:number;volumeUsd:number;trades:number;tags:string[]}
 
 const STORAGE='remora_caller_reputation_v1'
+const KEY_STORAGE='remora_db_key'
 const triOptions=[['unknown','Unknown'],['yes','Yes'],['no','No']] as const
 
 function pct(v:number|null){return v===null?'—':(v*100).toFixed(0)+'%'}
 function moneyPct(v:number|null){return v===null?'—':(v>=0?'+':'')+v.toFixed(1)+'%'}
 function short(v:string){return v.length>15?v.slice(0,7)+'…'+v.slice(-5):v}
+function tri(v:any):TriState{return v===true?'yes':v===false?'no':'unknown'}
+
+function fromDb(row:any):CallerObservation{
+  return{
+    id:String(row.client_id||row.id),
+    wallet:String(row.wallet||''),
+    source:row.source||'manual',
+    tokenSymbol:String(row.token_symbol||'UNKNOWN'),
+    recordedAt:String(row.recorded_at||new Date().toISOString()),
+    entryBeforeCall:tri(row.entry_before_call),
+    dumpAfterCall:tri(row.dump_after_call),
+    rugged:tri(row.rugged),
+    roiPct:row.roi_pct===null||row.roi_pct===undefined?null:Number(row.roi_pct),
+    thesisScore:row.thesis_score===null||row.thesis_score===undefined?null:Number(row.thesis_score),
+    note:String(row.note||''),
+  }
+}
+
+function mergeRows(a:CallerObservation[],b:CallerObservation[]){
+  const map=new Map<string,CallerObservation>()
+  for(const row of [...b,...a]) map.set(row.id,row)
+  return [...map.values()].sort((x,y)=>new Date(y.recordedAt).getTime()-new Date(x.recordedAt).getTime())
+}
 
 export default function ReputationPanel({tokenSymbol,traders}:{tokenSymbol:string;traders:Trader[]}){
   const [rows,setRows]=useState<CallerObservation[]>([])
@@ -24,10 +48,21 @@ export default function ReputationPanel({tokenSymbol,traders}:{tokenSymbol:strin
   const [thesis,setThesis]=useState('')
   const [note,setNote]=useState('')
   const [open,setOpen]=useState(false)
+  const [dbKey,setDbKey]=useState('')
+  const [cloudStatus,setCloudStatus]=useState<'locked'|'checking'|'connected'|'error'>('locked')
+  const [cloudMessage,setCloudMessage]=useState('Cloud database locked')
 
   useEffect(()=>{
-    try{setRows(JSON.parse(localStorage.getItem(STORAGE)||'[]'))}catch{}
+    try{
+      const local=JSON.parse(localStorage.getItem(STORAGE)||'[]')
+      setRows(Array.isArray(local)?local:[])
+      const savedKey=localStorage.getItem(KEY_STORAGE)||''
+      setDbKey(savedKey)
+      if(savedKey) void connectCloud(savedKey,Array.isArray(local)?local:[])
+    }catch{}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[])
+
   useEffect(()=>{
     if(!wallet&&traders[0]?.address)setWallet(traders[0].address)
   },[traders,wallet])
@@ -39,7 +74,58 @@ export default function ReputationPanel({tokenSymbol,traders}:{tokenSymbol:strin
     setRows(next)
     localStorage.setItem(STORAGE,JSON.stringify(next))
   }
-  function add(){
+
+  async function cloud(action:string,payload:Record<string,unknown>={},keyOverride?:string){
+    const key=(keyOverride??dbKey).trim()
+    if(!key) throw new Error('Enter Remora DB Key')
+    const res=await fetch('/api/reputation',{
+      method:'POST',
+      headers:{'content-type':'application/json','x-remora-key':key},
+      body:JSON.stringify({action,...payload}),
+      cache:'no-store',
+    })
+    const json=await res.json()
+    if(!res.ok) throw new Error(json.error||'Cloud database request failed')
+    return json
+  }
+
+  async function connectCloud(keyOverride?:string,localRows?:CallerObservation[]){
+    const key=(keyOverride??dbKey).trim()
+    if(!key){setCloudStatus('locked');setCloudMessage('Enter Remora DB Key');return}
+    setCloudStatus('checking');setCloudMessage('Checking secure cloud…')
+    try{
+      await cloud('health',{},key)
+      const result=await cloud('list',{limit:1000},key)
+      const serverRows=Array.isArray(result.observations)?result.observations.map(fromDb):[]
+      const merged=mergeRows(localRows??rows,serverRows)
+      saveRows(merged)
+      localStorage.setItem(KEY_STORAGE,key)
+      setDbKey(key)
+      setCloudStatus('connected')
+      setCloudMessage('Cloud DB connected · '+serverRows.length+' server observations')
+    }catch(error){
+      setCloudStatus('error')
+      setCloudMessage(error instanceof Error?error.message:'Cloud connection failed')
+    }
+  }
+
+  async function syncAll(){
+    if(!dbKey.trim())return
+    setCloudStatus('checking');setCloudMessage('Syncing local observations…')
+    try{
+      const result=await cloud('bulk',{observations:rows})
+      setCloudStatus('connected')
+      setCloudMessage('Synced '+Number(result.count||0)+' observations to cloud')
+      const fresh=await cloud('list',{limit:1000})
+      const serverRows=Array.isArray(fresh.observations)?fresh.observations.map(fromDb):[]
+      saveRows(mergeRows(rows,serverRows))
+    }catch(error){
+      setCloudStatus('error')
+      setCloudMessage(error instanceof Error?error.message:'Sync failed')
+    }
+  }
+
+  async function add(){
     const w=wallet.trim()
     if(!w)return
     const roiValue=roi.trim()===''?null:Number(roi)
@@ -57,14 +143,39 @@ export default function ReputationPanel({tokenSymbol,traders}:{tokenSymbol:strin
       thesisScore:Number.isFinite(thesisValue as number)?thesisValue:null,
       note:note.trim(),
     }
-    saveRows([obs,...rows])
+    const next=[obs,...rows]
+    saveRows(next)
     setRoi('');setThesis('');setNote('');setEntry('unknown');setDump('unknown');setRugged('unknown')
+
+    if(dbKey.trim()){
+      try{
+        await cloud('save',{observation:obs})
+        setCloudStatus('connected')
+        setCloudMessage('Observation saved locally + cloud')
+      }catch(error){
+        setCloudStatus('error')
+        setCloudMessage('Saved locally; cloud failed: '+(error instanceof Error?error.message:'unknown error'))
+      }
+    }
+  }
+
+  function disconnect(){
+    localStorage.removeItem(KEY_STORAGE)
+    setDbKey('')
+    setCloudStatus('locked')
+    setCloudMessage('Cloud database locked')
   }
 
   return <div className={s.reputationBox}>
     <div className={s.repHeader}>
       <div><p className={s.eyebrow}>CALLER REPUTATION DATABASE</p><h4>{reputation?reputation.status:'SELECT / ENTER WALLET'}</h4></div>
       <button className={s.repToggle} onClick={()=>setOpen(v=>!v)}>{open?'Close observation':'Add observation'}</button>
+    </div>
+
+    <div className={s.cloudBar}>
+      <div className={s.cloudKeyWrap}><input type="password" value={dbKey} onChange={e=>setDbKey(e.target.value)} placeholder="Remora DB Key"/><button onClick={()=>void connectCloud()} disabled={cloudStatus==='checking'}>{cloudStatus==='checking'?'Checking…':'Connect'}</button></div>
+      <div className={s.cloudState+' '+(cloudStatus==='connected'?s.cloudGood:cloudStatus==='error'?s.cloudBad:'')}><span>{cloudStatus.toUpperCase()}</span><small>{cloudMessage}</small></div>
+      {cloudStatus==='connected'&&<div className={s.cloudActions}><button onClick={()=>void syncAll()}>Sync local → cloud</button><button onClick={disconnect}>Lock</button></div>}
     </div>
 
     <div className={s.repWallet}>
@@ -93,11 +204,11 @@ export default function ReputationPanel({tokenSymbol,traders}:{tokenSymbol:strin
       <div><label>Observed ROI %</label><input type="number" step="0.1" value={roi} onChange={e=>setRoi(e.target.value)} placeholder="e.g. 38.5"/></div>
       <div><label>Thesis quality 1–5</label><input type="number" min="1" max="5" value={thesis} onChange={e=>setThesis(e.target.value)} placeholder="optional"/></div>
       <div className={s.repWide}><label>Verification note</label><input value={note} onChange={e=>setNote(e.target.value)} placeholder="What did you verify on GMGN/FOMO/Nansen?"/></div>
-      <button className={s.repSave} onClick={add} disabled={!wallet.trim()}>Save verified observation</button>
+      <button className={s.repSave} onClick={()=>void add()} disabled={!wallet.trim()}>Save verified observation</button>
     </div>}
 
-    {ranking.length>0&&<div className={s.repRanking}><p className={s.eyebrow}>LOCAL REPUTATION LEADERBOARD</p>{ranking.map(r=><button key={r.wallet} onClick={()=>setWallet(r.wallet)}><span>{short(r.wallet)}</span><b>{r.score}</b><small>{r.sampleSize} obs · {r.status}</small></button>)}</div>}
+    {ranking.length>0&&<div className={s.repRanking}><p className={s.eyebrow}>REPUTATION LEADERBOARD</p>{ranking.map(r=><button key={r.wallet} onClick={()=>setWallet(r.wallet)}><span>{short(r.wallet)}</span><b>{r.score}</b><small>{r.sampleSize} obs · {r.status}</small></button>)}</div>}
 
-    <p className={s.repNote}>This database stores verified observations in this browser only. Scores are evidence-weighted and shrink toward neutral when the sample is small; they are not proof that a caller will be profitable in the future.</p>
+    <p className={s.repNote}>Local cache remains available offline. When the cloud key is connected, observations are synced to the dedicated Remora Supabase project and can be recovered on another device with the same key.</p>
   </div>
 }

@@ -36,3 +36,18 @@ Remora includes a browser-persistent caller observation database for verified GM
 - sample-size confidence
 
 Reputation is deliberately shrunk toward neutral when observations are scarce. This local store keeps the DEX project separate from the existing Fais Finance Supabase project. A dedicated server database can replace the local adapter later without changing the scoring model.
+
+
+## Dedicated Remora Cloud Store
+
+The production app can sync Caller Reputation observations into a dedicated Supabase project:
+
+- Project: `remora-intelligence`
+- Project ref: `hilkjrfudfuybayqdnbv`
+- Edge Function: `remora-db`
+- Storage tables: callers, observations, signal provenance, wallet snapshots
+- Direct anonymous/authenticated table access: revoked
+- RLS: enabled
+- Database access: custom Remora DB Key verified by the Edge Function
+
+The browser keeps an offline cache. Connecting the same Remora DB Key on another device restores the cloud observations.

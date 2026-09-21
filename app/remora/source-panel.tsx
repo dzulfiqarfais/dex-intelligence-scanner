@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import s from './remora.module.css'
 import ReputationPanel from './reputation-panel'
 
@@ -56,9 +56,38 @@ export default function SourcePanel({candidate}:{candidate:CandidateLike}){
   const [intel,setIntel]=useState<Intel|null>(null)
   const [loading,setLoading]=useState(false)
   const [error,setError]=useState('')
+  const savedProvenance=useRef('')
 
   const query=useMemo(()=>{
-    if(!candidate.tokenAddress)return ''
+    useEffect(()=>{
+    if(!intel||!candidate.tokenAddress)return
+    const key=localStorage.getItem('remora_db_key')||''
+    if(!key)return
+    const marker=candidate.tokenAddress+':'+intel.generatedAt
+    if(savedProvenance.current===marker)return
+    savedProvenance.current=marker
+    void fetch('/api/reputation',{
+      method:'POST',
+      headers:{'content-type':'application/json','x-remora-key':key},
+      body:JSON.stringify({action:'provenance',payload:{
+        tokenAddress:candidate.tokenAddress,
+        chain:candidate.platform,
+        symbol:candidate.symbol,
+        provenanceScore:intel.provenanceScore,
+        professionalConsensus:intel.professionalConsensus,
+        signalStatus:intel.signalStatus,
+        inferredThesis:intel.inferredThesis,
+        publicCallerThesis:intel.publicCallerThesis,
+        providers:intel.providers,
+        evidence:intel.evidence,
+        conflicts:intel.conflicts,
+        snapshot:{marketCap:candidate.marketCap,volumeToMarketCap:candidate.volumeToMarketCap,fdvToMarketCap:candidate.fdvToMarketCap,change1h:candidate.change1h,change24h:candidate.change24h,behavior:candidate.behavior,security:candidate.security},
+        capturedAt:intel.generatedAt,
+      }})
+    }).catch(()=>{})
+  },[intel,candidate])
+
+  if(!candidate.tokenAddress)return ''
     const q=new URLSearchParams({
       tokenAddress:candidate.tokenAddress,
       chain:candidate.platform||'solana',
