@@ -1,28 +1,24 @@
 # DEX Intelligence Scanner
 
-Standalone Next.js application for DEX token discovery and market-risk screening using Dexscreener public API.
+Standalone Next.js market-intelligence project.
 
-## Local
+## Modules
 
-```bash
-npm install
-npm run dev
-```
+- **DEX Scanner** — DEX Screener discovery, liquidity, transaction flow, momentum, market-risk heuristic.
+- **Remora Intelligence v2** — CoinMarketCap small-cap screening, tagged whale + smart-money behavior, large-buy detection, security gate, local scan-delta tracking, browser alerts.
+- **Telegram background endpoint** — \`/api/cron/remora\`, ready when \`TELEGRAM_BOT_TOKEN\`, \`TELEGRAM_CHAT_ID\`, and \`CRON_SECRET\` are configured.
 
-Open http://localhost:3000
+## Environment variables (optional)
 
-## Deploy to Vercel
+\`\`\`
+CMC_API_KEY=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+CRON_SECRET=
+\`\`\`
 
-Import this project as its own Vercel project. No environment variables are required for v1.
+Without \`CMC_API_KEY\`, the scanner uses CoinMarketCap's keyless public API. A free key is recommended for higher limits.
 
-## Current scope
+## Important
 
-- Solana, Base, BNB Chain, Ethereum, or all supported discovery items
-- Latest profile + boost discovery
-- Pair enrichment
-- Opportunity Score heuristic
-- Market Risk Score heuristic
-- Search and filters
-- 30-second optional auto refresh
-
-The scores are not trading recommendations and do not yet inspect token authorities, holder concentration, dev wallets, liquidity locks, honeypots, or bundle/insider behavior.
+Scores and whale labels are analytical heuristics/evidence summaries, not automatic trade instructions or guarantees of future price movement.
