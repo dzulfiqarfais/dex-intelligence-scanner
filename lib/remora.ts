@@ -92,7 +92,7 @@ async function cmcFetch<T>(path:string,init?:RequestInit):Promise<T>{
   if(!res.ok) throw new Error('CoinMarketCap returned '+res.status)
   const json=await res.json()
   const status=(json as {status?:{error_code?:number;error_message?:string}})?.status
-  if(status?.error_code) throw new Error(status.error_message||'CoinMarketCap API error')
+  if(status?.error_code) throw new Error(status.error_message||('CoinMarketCap error '+status.error_code))
   return json as T
 }
 
@@ -255,7 +255,7 @@ async function whaleEvidence(candidate:RemoraCandidate):Promise<WhaleEvidence>{
       limit:'20',
     })
 
-    const [txJson,holderJson]=await Promise.all([
+    const [txResult,holderResult]=await Promise.allSettled([
       cmcFetch<any>('/v1/dex/tokens/transactions?'+txParams.toString()),
       cmcFetch<any>('/v1/dex/holders/list',{
         method:'POST',
@@ -267,13 +267,16 @@ async function whaleEvidence(candidate:RemoraCandidate):Promise<WhaleEvidence>{
       }),
     ])
 
-    const txData=unwrap<any>(txJson)
+    const txJson=txResult.status==='fulfilled'?txResult.value:null
+    const holderJson=holderResult.status==='fulfilled'?holderResult.value:null
+
+    const txData=txJson?unwrap<any>(txJson):null
     const swaps=Array.isArray(txData)?txData:(txData?.swaps||[])
     const largeBuys=swaps.filter((s:any)=>num(s?.v)>=thresholdUsd)
     const largestBuyUsd=largeBuys.reduce((m:number,s:any)=>Math.max(m,num(s?.v)),0)
     const lastLargeBuyAt=largeBuys.reduce((m:number,s:any)=>Math.max(m,normalizeEpoch(s?.ts)),0)||null
 
-    const holderData=unwrap<any>(holderJson)
+    const holderData=holderJson?unwrap<any>(holderJson):null
     const holders=Array.isArray(holderData)?holderData:(holderData?.holders||[])
     const now=Math.floor(Date.now()/1000)
     const netBuyWhales=holders.filter((h:any)=>{
@@ -286,8 +289,10 @@ async function whaleEvidence(candidate:RemoraCandidate):Promise<WhaleEvidence>{
 
     const confirmed=largeBuys.length>0&&netBuyWhales.length>0
     const probable=!confirmed&&(largeBuys.length>0||netBuyWhales.length>0)
+    const holderUnavailable=holderResult.status==='rejected'
+    const txUnavailable=txResult.status==='rejected'
     return{
-      status:confirmed?'confirmed':probable?'probable':'none',
+      status:confirmed?'confirmed':probable?'probable':(txUnavailable&&holderUnavailable)?'unavailable':'none',
       largeBuyCount:largeBuys.length,
       largestBuyUsd,
       taggedWhaleCount:holders.length,
@@ -297,8 +302,10 @@ async function whaleEvidence(candidate:RemoraCandidate):Promise<WhaleEvidence>{
       note:confirmed
         ?'Large buy swaps and tagged whale net-buy activity both detected.'
         :probable
-          ?'One whale evidence channel is positive; verify before acting.'
-          :'No qualifying whale evidence found in this scan window.',
+          ?'At least one whale evidence channel is positive; verify before acting.'
+          :holderUnavailable
+            ?'No large buy detected; tagged-holder channel is unavailable in this keyless scan.'
+            :'No qualifying whale evidence found in this scan window.',
     }
   }catch(error){
     return{
@@ -313,15 +320,13 @@ export async function scanRemora(opts?:{maxMarketCap?:number;minVolume?:number})
   const minVolume=Math.min(Math.max(opts?.minVolume??100_000,10_000),100_000_000)
   const params=new URLSearchParams({
     start:'1',
-    limit:'250',
+    limit:'100',
     convert:'USD',
     market_cap_min:'500000',
     market_cap_max:String(maxMarketCap),
     volume_24h_min:String(minVolume),
     sort:'volume_24h',
     sort_dir:'desc',
-    cryptocurrency_type:'all',
-    aux:'platform,tags,date_added,circulating_supply,total_supply,max_supply,cmc_rank,num_market_pairs',
   })
   const json=await cmcFetch<any>('/v3/cryptocurrency/listings/latest?'+params.toString())
   const raw=unwrap<CmcListing[]>(json)
