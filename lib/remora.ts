@@ -92,7 +92,7 @@ async function cmcFetch<T>(path:string,init?:RequestInit):Promise<T>{
   if(!res.ok) throw new Error('CoinMarketCap returned '+res.status)
   const json=await res.json()
   const status=(json as {status?:{error_code?:number;error_message?:string}})?.status
-  if(status?.error_code) throw new Error(status.error_message||('CoinMarketCap error '+status.error_code))
+  if(Number(status?.error_code??0)!==0) throw new Error(status?.error_message||('CoinMarketCap error '+status?.error_code))
   return json as T
 }
 
