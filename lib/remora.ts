@@ -1,4 +1,5 @@
-const CMC_BASE='https://pro-api.coinmarketcap.com/public-api'
+const CMC_KEY=process.env.CMC_API_KEY?.trim()
+const CMC_BASE=CMC_KEY?'https://pro-api.coinmarketcap.com':'https://pro-api.coinmarketcap.com/public-api'
 
 const clamp=(n:number,min=0,max=100)=>Math.min(max,Math.max(min,n))
 const num=(v:unknown)=>Number.isFinite(Number(v))?Number(v):0
@@ -84,6 +85,7 @@ async function cmcFetch<T>(path:string,init?:RequestInit):Promise<T>{
     headers:{
       Accept:'application/json',
       ...(init?.body?{'Content-Type':'application/json'}:{}),
+      ...(CMC_KEY?{'X-CMC_PRO_API_KEY':CMC_KEY}:{}),
       ...(init?.headers||{}),
     },
     cache:'no-store',
@@ -222,7 +224,7 @@ function scoreListing(listing:CmcListing):RemoraCandidate|null{
     remoraScore,
     finalScore:remoraScore,
     flags,
-    whale:emptyWhale(),
+    whale:emptyWhale(tokenAddress&&platform?'Whale check queued for high-potential candidates.':'No contract/platform available'),
     cmcUrl:'https://coinmarketcap.com/currencies/'+listing.slug+'/#Markets',
     dexUrl:tokenAddress?'https://dexscreener.com/search?q='+encodeURIComponent(tokenAddress):null,
   }
@@ -335,7 +337,7 @@ export async function scanRemora(opts?:{maxMarketCap?:number;minVolume?:number})
     .filter((x):x is RemoraCandidate=>Boolean(x))
     .sort((a,b)=>b.remoraScore-a.remoraScore)
 
-  const enrichable=base.filter(c=>c.tokenAddress&&c.platform).slice(0,5)
+  const enrichable=base.filter(c=>c.tokenAddress&&c.platform&&c.remoraScore>=60).slice(0,8)
   const evidence=await Promise.all(enrichable.map(whaleEvidence))
   const map=new Map(enrichable.map((c,i)=>[c.id,evidence[i]]))
 
