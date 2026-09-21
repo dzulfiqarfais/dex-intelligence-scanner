@@ -288,11 +288,13 @@ function actorFrom(holder:HolderRaw,role:RemoraActor['role'],now:number):RemoraA
   if(recentOpen&&net>0&&balance>0) status='new_entry'
   else if(recent&&net>Math.max(1000,sell*.15)&&balance>0) status='adding'
   else if(recent&&net<-Math.max(1000,buy*.15)) status='distribution'
+  const address=String(holder.walletAddress||'')
+  const explorer=holder.addressExplorerUrl?String(holder.addressExplorerUrl).replace('%s',address):null
   return{
-    address:String(holder.walletAddress||''),
-    label:String(holder.publicName||'').trim()||((holder.walletAddress||'').slice(0,6)+'…'+(holder.walletAddress||'').slice(-4)),
+    address,
+    label:String(holder.publicName||'').trim()||(address.slice(0,6)+'…'+address.slice(-4)),
     role,status,buyUsd:buy,sellUsd:sell,netUsd:net,holdingPct:num(holder.percent),
-    lastActiveTime:last||null,spotOpenTs:spotOpen||null,explorerUrl:holder.addressExplorerUrl||null,
+    lastActiveTime:last||null,spotOpenTs:spotOpen||null,explorerUrl:explorer,
   }
 }
 
@@ -441,7 +443,9 @@ async function intelligence(candidate:RemoraCandidate){
 
   const finalScore=Math.round(clamp(candidate.remoraScore+bonus-penalty))
   const securityVerified=security.status==='pass'||security.status==='caution'
-  const alertEligible=finalScore>=70&&securityVerified&&(state==='accumulation'||multiWhaleAccumulation||activeSmartMoneyBuyers>0||whale.status==='confirmed')
+  const positiveWhaleCluster=multiWhaleAccumulation&&whaleNetFlowUsd>0
+  const positiveSmartMoney=activeSmartMoneyBuyers>0&&smartMoneyNetFlowUsd>0
+  const alertEligible=finalScore>=70&&securityVerified&&state!=='distribution'&&(state==='accumulation'||positiveWhaleCluster||positiveSmartMoney||(whale.status==='confirmed'&&whaleNetFlowUsd>=0))
 
   return{...candidate,whale,behavior,security,finalScore,alertEligible}
 }
